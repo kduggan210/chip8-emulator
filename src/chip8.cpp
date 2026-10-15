@@ -97,6 +97,22 @@ void Chip8::Cycle() {
         case 0x9: OP_9xy0(); break;
         case 0xA: OP_Annn(); break;
         case 0xD: OP_Dxyn(); break;
+        case 0xF:
+            switch( opcode & 0x00FF) {
+                case 0x07: OP_Fx07(); break;
+                case 0x0A: OP_Fx0A(); break;
+                case 0x15: OP_Fx15(); break;
+                case 0x18: OP_Fx18(); break;
+                case 0x1E: OP_Fx1E(); break;
+                case 0x29: OP_Fx29(); break;
+                case 0x33: OP_Fx33(); break;
+                case 0x55: OP_Fx55(); break;
+                case 0x65: OP_Fx65(); break;
+                default:
+                    std::cerr << "Unhandled opcode: " << std::hex << opcode << "\n";
+                    break;
+            }
+            break;
         default:
             std::cerr << "Unhandled opcode: " << std::hex << opcode << "\n";
             break;
@@ -279,14 +295,91 @@ void Chip8::OP_Dxyn() {
         uint8_t spriteByte = memory[index + row];
 
         for (unsigned int col = 0; col < 8; ++col) {
-            if (xPos + col >= VIDEO_WIDTH) break;               // clip at right edge
+            if (xPos + col >= VIDEO_WIDTH) break;                // clip at right edge
 
             // 0x80 >> col is a single set bit moving from the leftmost pixel to the rightmost
             if (spriteByte & (0x80 >> col)) {
                 uint32_t& pixel = video[(yPos + row) * VIDEO_WIDTH + (xPos + col)];
                 if (pixel == 0xFFFFFFFF) registers[0xF] = 1;     // erasing a lit pixel = collision
-                pixel ^= 0xFFFFFFFF;                            // XOR toggles the pixel
+                pixel ^= 0xFFFFFFFF;                             // XOR toggles the pixel
             }
         }
+    }
+}
+
+// Set Vx = delay timer value
+void Chip8::OP_Fx07() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    registers[Vx] = delayTimer;
+}
+
+// Wait for a key press and store it in Vx. If no key is down move pc back 2 to re-run the same instructin next cycle. Rest of the emulator keeps running.
+void Chip8::OP_Fx0A() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+
+    bool pressed = false;
+    for (uint8_t i = 0; i < 16; ++i) {
+        if (keypad[i]) {
+            registers[Vx] = i;
+            pressed = true;
+            break;
+        }
+    }
+
+    if (!pressed) {
+        pc -= 2;    // undo the advance from Cycle() so this instruction repeats
+    }
+}
+
+// Set delay timer = Vx
+void Chip8::OP_Fx15() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    delayTimer = registers[Vx];
+}
+
+// Set sound timer = Vx
+void Chip8::OP_Fx18() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    soundTimer = registers[Vx];
+}
+
+// Set I = I + Vx
+void Chip8::OP_Fx1E() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    index += registers[Vx];
+}
+
+// Set I = address of the font sprite for the digit in Vx. Each font char is 5 bytes, so 5(digit) gives the offset from the start of the font data
+void Chip8::OP_Fx29() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    uint8_t digit = registers[Vx] & 0x0F;
+    index = FONTSET_START_ADDRESS + (5 * digit);
+}
+
+// Store the decimal digits of Vx in memory at I (hundreds), I+1 (tens), I+2 (ones)
+void Chip8::OP_Fx33() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    uint8_t value = registers[Vx];
+
+    memory[index + 2] = value % 10;     // ones
+    value /= 10;
+    memory[index + 1] = value % 10;     // tens
+    value /= 10;
+    memory[index] = value % 10;         // hundreds
+}
+
+// Store registers V0 through Vx in memory starting at I
+void Chip8::OP_Fx55() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    for (uint8_t i = 0; i <= Vx; ++i) {
+        memory[index + i] = registers[i];
+    }
+}
+
+// Read registers V0 through Vx from memory starting at I
+void Chip8::OP_Fx65() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    for (uint8_t i = 0; i <= Vx; ++i) {
+        registers[i] = memory[index + i];
     }
 }
