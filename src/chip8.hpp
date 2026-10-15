@@ -62,4 +62,5 @@ public:
 
     std::mt19937 randGen{std::random_device{}()};            // Random number generator, seeded from the OS
     std::uniform_int_distribution<int> randByte{0, 255};     // Picks a whole number from 0 to 255 evenly
+    bool vblankReady{true};                                  // True once per 60 Hz frame;
 };

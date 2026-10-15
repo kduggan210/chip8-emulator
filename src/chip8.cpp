@@ -134,6 +134,7 @@ void Chip8::Cycle() {
 void Chip8::UpdateTimers() {
     if (delayTimer > 0) --delayTimer;
     if (soundTimer >0)  --soundTimer;
+    vblankReady = true;
 }
 
 
@@ -218,6 +219,7 @@ void Chip8::OP_8xy1() {
     uint8_t Vx = (opcode & 0x0F00) >> 8;
     uint8_t Vy = (opcode & 0x00F0) >> 4;
     registers[Vx] |= registers[Vy];
+    registers[0xF] = 0;
 }
 
 // Set Vx = Vx AND Vy
@@ -225,6 +227,7 @@ void Chip8::OP_8xy2() {
     uint8_t Vx = (opcode & 0x0F00) >> 8;
     uint8_t Vy = (opcode & 0x00F0) >> 4;
     registers[Vx] &= registers[Vy];
+    registers[0xF] = 0;
 }
 
 // Set Vx = Vx XOR Vy
@@ -232,6 +235,7 @@ void Chip8::OP_8xy3() {
     uint8_t Vx = (opcode & 0x0F00) >> 8;
     uint8_t Vy = (opcode & 0x00F0) >> 4;
     registers[Vx] ^= registers[Vy];
+    registers[0xF] = 0;
 }
 
 // Sum is computed in 16 bits so a result over 255 isn't lost, then only the lowest 8 bits are stored back in Vx.
@@ -254,11 +258,12 @@ void Chip8::OP_8xy5() {
     registers[0xF] = flag;
 }
 
-// Shift Vx right by 1. VF = least significant bit that was shifted out.
+// Set Vx = Vy shifted right by 1. VF = least significant bit of Vy that was shifted out.
 void Chip8::OP_8xy6() {
     uint8_t Vx = (opcode & 0x0F00) >> 8;
-    uint8_t flag = registers[Vx] & 0x1;
-    registers[Vx] >>= 1;
+    uint8_t Vy = (opcode & 0x00F0) >> 4;
+    uint8_t flag = registers[Vy] & 0x1;
+    registers[Vx] = registers[Vy] >> 1;
     registers[0xF] = flag;
 }
 
@@ -271,11 +276,12 @@ void Chip8::OP_8xy7() {
     registers[0xF] = flag;
 }
 
-// Shift Vx left by 1. VF = most significant bit that was shifted out.
+// Set Vx = Vy shifted left by 1. VF = most significant bit of Vy that was shifted out.
 void Chip8::OP_8xyE() {
     uint8_t Vx = (opcode & 0x0F00) >> 8;
-    uint8_t flag = (registers[Vx] & 0x80) >> 7;
-    registers[Vx] <<= 1;
+    uint8_t Vy = (opcode & 0x00F0) >> 4;
+    uint8_t flag = (registers[Vy] & 0x80) >> 7;
+    registers[Vx] = registers[Vy] << 1;
     registers[0xF] = flag;
 }
 
@@ -309,6 +315,13 @@ void Chip8::OP_Cxkk() {
 // Draw an n-byte sprite from memory[index] at screen position (Vx, Vy).
 // Each byte = one row of 8 pixels. Pixels are XORed onto the screen and VF is set to 1 if a collision occurs (a lit pixel gets turned off)
 void Chip8::OP_Dxyn() {
+    // If this frame's draw is already used, undo the pc advance so this same instruction retries on the next cycle
+    if (!vblankReady) {
+        pc -= 2;
+        return;
+    }
+    vblankReady = false;
+
     uint8_t Vx = (opcode & 0x0F00) >> 8;
     uint8_t Vy = (opcode & 0x00F0) >> 4;
     uint8_t height = opcode & 0x000F;
@@ -422,6 +435,7 @@ void Chip8::OP_Fx55() {
     for (uint8_t i = 0; i <= Vx; ++i) {
         memory[index + i] = registers[i];
     }
+    index += Vx + 1;
 }
 
 // Read registers V0 through Vx from memory starting at I
@@ -430,4 +444,5 @@ void Chip8::OP_Fx65() {
     for (uint8_t i = 0; i <= Vx; ++i) {
         registers[i] = memory[index + i];
     }
+    index += Vx + 1;
 }
