@@ -78,6 +78,22 @@ void Chip8::Cycle() {
         case 0x5: OP_5xy0(); break;
         case 0x6: OP_6xkk(); break;
         case 0x7: OP_7xkk(); break;
+        case 0x8:
+            switch (opcode & 0x000F) {
+                case 0x0: OP_8xy0(); break;
+                case 0x1: OP_8xy1(); break;
+                case 0x2: OP_8xy2(); break;
+                case 0x3: OP_8xy3(); break;
+                case 0x4: OP_8xy4(); break;
+                case 0x5: OP_8xy5(); break;
+                case 0x6: OP_8xy6(); break;
+                case 0x7: OP_8xy7(); break;
+                case 0xE: OP_8xyE(); break;
+                default:
+                    std::cerr << "Unhandled opcode: " << std::hex << opcode << "\n";
+                    break;
+            }
+            break;
         case 0x9: OP_9xy0(); break;
         case 0xA: OP_Annn(); break;
         case 0xD: OP_Dxyn(); break;
@@ -111,9 +127,9 @@ void Chip8::OP_1nnn() {
 // Save the return address on the stack, then jump. PC was already advanced by 2 in Cycle(), so it points at the instruction after the call
 void Chip8::OP_2nnn() {
     uint16_t address = opcode & 0x0FFF;
-    stack[sp] = pc;      // push the return address
-    ++sp;              // move the stack pointer up to the next free slot
-    pc = address;       // jump to the subroutinne
+    stack[sp] = pc;     // push the return address
+    ++sp;               // move the stack pointer up to the next free slot
+    pc = address;       // jump to the subroutine
 }
 
 // Skip the next instruction if Vx = kk. pc already points at the next instruction, so adding 2 more steps over it
@@ -155,6 +171,79 @@ void Chip8::OP_7xkk() {
     uint8_t Vx = (opcode & 0x0F00) >> 8;
     uint8_t byte = opcode & 0x00FF;
     registers[Vx] += byte;
+}
+
+// Set Vx = Vy
+void Chip8::OP_8xy0() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    uint8_t Vy = (opcode & 0x00F0) >> 4;
+    registers[Vx] = registers[Vy];
+}
+
+// Set Vx = Vx OR Vy
+void Chip8::OP_8xy1() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    uint8_t Vy = (opcode & 0x00F0) >> 4;
+    registers[Vx] |= registers[Vy];
+}
+
+// Set Vx = Vx AND Vy
+void Chip8::OP_8xy2() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    uint8_t Vy = (opcode & 0x00F0) >> 4;
+    registers[Vx] &= registers[Vy];
+}
+
+// Set Vx = Vx XOR Vy
+void Chip8::OP_8xy3() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    uint8_t Vy = (opcode & 0x00F0) >> 4;
+    registers[Vx] ^= registers[Vy];
+}
+
+// Sum is computed in 16 bits so a result over 255 isn't lost, then only the lowest 8 bits are stored back in Vx.
+// If the sum is greater than 255, VF is set to 1, otherwise 0.
+// Flag is written last so that if x is F, the flag isn't overwritten by the result.
+void Chip8::OP_8xy4() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    uint8_t Vy = (opcode & 0x00F0) >> 4;
+    uint16_t sum = registers[Vx] + registers[Vy];
+    registers[Vx] = sum & 0xFF;
+    registers[0xF] = (sum > 255) ? 1 : 0;
+}
+
+// Set Vx = Vx - Vy. If Vx > Vy, then VF is set to 1, otherwise 0.
+void Chip8::OP_8xy5() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    uint8_t Vy = (opcode & 0x00F0) >> 4;
+    uint8_t flag = (registers[Vx] > registers[Vy]) ? 1 : 0;
+    registers[Vx] -= registers[Vy];
+    registers[0xF] = flag;
+}
+
+// Shift Vx right by 1. VF = least significant bit that was shifted out.
+void Chip8::OP_8xy6() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    uint8_t flag = registers[Vx] & 0x1;
+    registers[Vx] >>= 1;
+    registers[0xF] = flag;
+}
+
+// Set Vx = Vy - Vx. If Vy > Vx, then VF is set to 1, otherwise 0.
+void Chip8::OP_8xy7() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    uint8_t Vy = (opcode & 0x00F0) >> 4;
+    uint8_t flag = (registers[Vy] > registers[Vx]) ? 1 : 0;
+    registers[Vx] = registers[Vy] - registers[Vx];
+    registers[0xF] = flag;
+}
+
+// Shift Vx left by 1. VF = most significant bit that was shifted out.
+void Chip8::OP_8xyE() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    uint8_t flag = (registers[Vx] & 0x80) >> 7;
+    registers[Vx] <<= 1;
+    registers[0xF] = flag;
 }
 
 // Skip the next instruction if Vx != Vy.
