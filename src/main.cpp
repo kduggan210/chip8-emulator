@@ -43,7 +43,7 @@ int main(int argc, char* argv[]) {
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         std::cerr << "SDL_Init failed: " << SDL_GetError() << "\n";
         return 1;
-        }
+    }
 
     // Each CHIP-8 pixel becomes a scale x scale block so the window is 640x320
     const int scale = 10;
@@ -56,6 +56,13 @@ int main(int argc, char* argv[]) {
     SDL_Texture* texture = SDL_CreateTexture(
         renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING,
         VIDEO_WIDTH, VIDEO_HEIGHT);
+
+    // Run a batch of instructions, tick the timers once, and redraw once every 1/60 s
+    const int cyclesPerFrame = 12;      // ~720 instructions per second
+    const double frameMs = 1000.0 / 60.0;
+    const double ticksPerMs = SDL_GetPerformanceFrequency() / 1000.0;
+    Uint64 lastCounter = SDL_GetPerformanceCounter();
+    double accumulator = 0.0;           // Time not yet used on frames
 
     bool running = true;
     SDL_Event event;
@@ -76,18 +83,30 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // Run one fetch-decode-execute step
-        chip8.Cycle();
+        // Add the real time since the last loop pass to the accumulator
+        Uint64 now = SDL_GetPerformanceCounter();
+        accumulator += (now - lastCounter) / ticksPerMs;
+        lastCounter = now;
+        if (accumulator > 100.0) accumulator = frameMs;
 
-        // Copy the video buffer into the texture. Last argument tells SDL where each row of the flat array begins (Pitch: bytes per row)
-        SDL_UpdateTexture(texture, nullptr, chip8.video, VIDEO_WIDTH * sizeof(uint32_t));
+        // Spend accumulated time in 1/60 s frames
+        bool redraw = false;
+        while (accumulator >= frameMs) {
+            accumulator -= frameMs;
+            for (int i = 0; i < cyclesPerFrame; ++i) chip8.Cycle();
+            chip8.UpdateTimers();
+            redraw = true;
+        }
 
-        // Draw the texture stretched to fill the whole window
-        SDL_RenderClear(renderer);
-        SDL_RenderCopy(renderer, texture, nullptr, nullptr);
-        SDL_RenderPresent(renderer);
-        // Pause between cycles so emulator doesn't run at full CPU speed
-        SDL_Delay(2);
+        // Only draw when something may have changed
+        if (redraw) {
+            SDL_UpdateTexture(texture, nullptr, chip8.video, VIDEO_WIDTH * sizeof(uint32_t));
+            SDL_RenderClear(renderer);
+            SDL_RenderCopy(renderer, texture, nullptr, nullptr);
+            SDL_RenderPresent(renderer);
+        }
+
+        SDL_Delay(1);
     }
 
     // Clean up in reverse order of creation

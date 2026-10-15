@@ -1,5 +1,6 @@
 #pragma once            // Stops header from being included twice in one file       
 #include <cstdint>      // Fixed size types 
+#include <random>       // Random number generator for Cxkk
 
 constexpr unsigned int VIDEO_WIDTH = 64;
 constexpr unsigned int VIDEO_HEIGHT = 32;
@@ -9,6 +10,7 @@ public:
     Chip8();                                        // Sets up the machine's starting state
     void LoadROM(const char* filename);             // Copies ROM file into memory
     void Cycle();                                   // Runs one fetch, decode, execute step
+    void UpdateTimers();                            // Ticks both timers down by 1
 
     // Opcode Declarations
     void OP_00E0();     // CLS
@@ -46,7 +48,6 @@ public:
     void OP_Fx55();     // LD [I], Vx
     void OP_Fx65();     // LD Vx, [I]
 
-
     uint8_t registers[16]{};                        // 16 8-bit registers V0-VF
     uint8_t memory[4096]{};                         // 4 KB of RAM 0x000-0xFFF
     uint16_t index{};                               // Holds memory addresses
@@ -58,4 +59,7 @@ public:
     uint8_t keypad[16]{};                           // State of each key; 1 = pressed, 0 = not pressed
     uint32_t video[VIDEO_WIDTH * VIDEO_HEIGHT]{};   // One on or off value per pixel
     uint16_t opcode{};                              // Current instruction being executed
+
+    std::mt19937 randGen{std::random_device{}()};            // Random number generator, seeded from the OS
+    std::uniform_int_distribution<int> randByte{0, 255};     // Picks a whole number from 0 to 255 evenly
 };

@@ -96,6 +96,8 @@ void Chip8::Cycle() {
             break;
         case 0x9: OP_9xy0(); break;
         case 0xA: OP_Annn(); break;
+        case 0xB: OP_Bnnn(); break;
+        case 0xC: OP_Cxkk(); break;
         case 0xD: OP_Dxyn(); break;
         case 0xE: 
             switch (opcode & 0x00FF) {
@@ -126,6 +128,12 @@ void Chip8::Cycle() {
             std::cerr << "Unhandled opcode: " << std::hex << opcode << "\n";
             break;
     }
+}
+
+// Both timeres count down by 1 at 60 Hz while above zero. Called by main every 1/60s
+void Chip8::UpdateTimers() {
+    if (delayTimer > 0) --delayTimer;
+    if (soundTimer >0)  --soundTimer;
 }
 
 
@@ -283,6 +291,19 @@ void Chip8::OP_9xy0() {
 // Set the index register to nnn: where the sprite data lives for drawing
 void Chip8::OP_Annn() {
     index = opcode & 0x0FFF;
+}
+
+// Jump to address nnn + V0. Keep the last 3 hex digits, add the value in V0, and load the result into pc
+void Chip8::OP_Bnnn() {
+    uint16_t address = opcode & 0x0FFF;
+    pc = address + registers[0];
+}
+
+// Set Vx = random byte AND kk. AND mask is used to limit which bits of the random number are kept
+void Chip8::OP_Cxkk() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    uint8_t byte = opcode & 0x00FF;
+    registers[Vx] = randByte(randGen) & byte;
 }
 
 // Draw an n-byte sprite from memory[index] at screen position (Vx, Vy).
