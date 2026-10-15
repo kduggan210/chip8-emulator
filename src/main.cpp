@@ -2,6 +2,33 @@
 #include <iostream>
 #include "chip8.hpp"
 
+// Maps a keyboard key to a CHIP-8 keypad index or -1 f unmapped.
+// CHIP-8:  1 2 3 C        Keyboard:  1 2 3 4
+//          4 5 6 D                   Q W E R
+//          7 8 9 E                   A S D F
+//          A 0 B F                   Z X C V
+int MapKey(SDL_Keycode key) {
+    switch (key) {
+        case SDLK_x: return 0x0;
+        case SDLK_1: return 0x1;
+        case SDLK_2: return 0x2;
+        case SDLK_3: return 0x3;
+        case SDLK_q: return 0x4;
+        case SDLK_w: return 0x5;
+        case SDLK_e: return 0x6;
+        case SDLK_a: return 0x7;
+        case SDLK_s: return 0x8;
+        case SDLK_d: return 0x9;
+        case SDLK_z: return 0xA;
+        case SDLK_c: return 0xB;
+        case SDLK_4: return 0xC;
+        case SDLK_r: return 0xD;
+        case SDLK_f: return 0xE;
+        case SDLK_v: return 0xF;
+        default:     return -1;
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Require a ROM path so a missing argument gives a message instead of a crash
     if (argc < 2) {
@@ -33,9 +60,20 @@ int main(int argc, char* argv[]) {
     bool running = true;
     SDL_Event event;
     while (running) {
-        // Closing the window ends the loop
+        // Closing the window ends the loop, quit key, and keypad presses and releases
         while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT) running = false;
+            if (event.type == SDL_QUIT){
+                running = false;
+            }
+            else if (event.type == SDL_KEYDOWN) {
+                if (event.key.keysym.sym == SDLK_ESCAPE) running = false;
+                int key = MapKey(event.key.keysym.sym);
+                if (key != -1) chip8.keypad[key] = 1;
+            }
+            else if (event.type == SDL_KEYUP) {
+                int key = MapKey(event.key.keysym.sym);
+                if (key != -1) chip8.keypad[key] = 0;
+            }
         }
 
         // Run one fetch-decode-execute step

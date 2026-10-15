@@ -97,6 +97,15 @@ void Chip8::Cycle() {
         case 0x9: OP_9xy0(); break;
         case 0xA: OP_Annn(); break;
         case 0xD: OP_Dxyn(); break;
+        case 0xE: 
+            switch (opcode & 0x00FF) {
+                case 0x9E: OP_Ex9E(); break;
+                case 0xA1: OP_ExA1(); break;
+                default:
+                    std::cerr << "Unhandled opcode: " << std::hex << opcode <<"\n";
+                    break;
+            }
+            break;
         case 0xF:
             switch( opcode & 0x00FF) {
                 case 0x07: OP_Fx07(); break;
@@ -305,6 +314,24 @@ void Chip8::OP_Dxyn() {
             }
         }
     }
+}
+
+// Skip next instruction if key whose number in Vx is pressed. Masked with 0x0F so a value above 15 can't index outside the keypad array.
+void Chip8::OP_Ex9E() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    uint8_t key = registers[Vx] & 0x0F;
+    if (keypad[key]) {
+        pc += 2;
+    }
+}
+
+// Skip the next instruction if the key whose number is in Vx is NOT pressed
+void Chip8::OP_ExA1() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    uint8_t key = registers[Vx] & 0x0F;
+    if (!keypad[key]) {
+        pc += 2;
+    }   
 }
 
 // Set Vx = delay timer value
