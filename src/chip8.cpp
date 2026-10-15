@@ -1,4 +1,5 @@
 #include "chip8.hpp"
+#include <cstring>
 #include <fstream>          // std::ifstream for reading files
 #include <iostream>         // std::cerr for error messages
 
@@ -59,4 +60,12 @@ void Chip8::LoadROM(const char* filename) {
 }
 
 void Chip8::Cycle() {
+    // Fetch: shift byte at pc 8 bits and OR in byte at pc+1 providing the full 2 byte instruction 
+    opcode = (memory[pc] << 8) | memory[pc+1];
+    // Advance to next instruction before executing this one
+    pc += 2;
+}
+
+void Chip8::OP_00E0() {
+    std::memset(video, 0, sizeof(video));
 }
