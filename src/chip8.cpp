@@ -72,8 +72,13 @@ void Chip8::Cycle() {
             else if (opcode == 0x00EE) OP_00EE();
             break;
         case 0x1: OP_1nnn(); break;
+        case 0x2: OP_2nnn(); break;
+        case 0x3: OP_3xkk(); break;
+        case 0x4: OP_4xkk(); break;
+        case 0x5: OP_5xy0(); break;
         case 0x6: OP_6xkk(); break;
         case 0x7: OP_7xkk(); break;
+        case 0x9: OP_9xy0(); break;
         case 0xA: OP_Annn(); break;
         case 0xD: OP_Dxyn(); break;
         default:
@@ -103,6 +108,41 @@ void Chip8::OP_1nnn() {
     pc = address;
 }
 
+// Save the return address on the stack, then jump. PC was already advanced by 2 in Cycle(), so it points at the instruction after the call
+void Chip8::OP_2nnn() {
+    uint16_t address = opcode & 0x0FFF;
+    stack[sp] = pc;      // push the return address
+    ++sp;              // move the stack pointer up to the next free slot
+    pc = address;       // jump to the subroutinne
+}
+
+// Skip the next instruction if Vx = kk. pc already points at the next instruction, so adding 2 more steps over it
+void Chip8::OP_3xkk() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    uint8_t byte = opcode & 0x00FF;
+    if (registers[Vx] == byte) {
+        pc += 2;
+    }
+}
+
+// Skip the next instruction if Vx != kk
+void Chip8::OP_4xkk() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    uint8_t byte = opcode & 0x00FF;
+    if (registers[Vx] != byte) {
+        pc += 2;
+    }
+}
+
+// Skip the next instruction if Vx == Vy
+void Chip8::OP_5xy0() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    uint8_t Vy = (opcode & 0x00F0) >> 4;
+    if (registers[Vx] == registers[Vy]) {
+        pc += 2;
+    }
+}
+
 // Set register Vx to kk. x = second hex digit, kk - last two hex digits
 void Chip8::OP_6xkk() {
     uint8_t Vx = (opcode & 0x0F00) >> 8;
@@ -115,6 +155,15 @@ void Chip8::OP_7xkk() {
     uint8_t Vx = (opcode & 0x0F00) >> 8;
     uint8_t byte = opcode & 0x00FF;
     registers[Vx] += byte;
+}
+
+// Skip the next instruction if Vx != Vy.
+void Chip8::OP_9xy0() {
+    uint8_t Vx = (opcode & 0x0F00) >> 8;
+    uint8_t Vy = (opcode & 0x00F0) >> 4;
+    if (registers[Vx] != registers[Vy]) {
+        pc += 2;
+    }
 }
 
 // Set the index register to nnn: where the sprite data lives for drawing
