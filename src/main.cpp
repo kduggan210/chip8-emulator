@@ -1,6 +1,7 @@
 #include <SDL.h>
 #include <iostream>
 #include <string>
+#include <atomic>
 #include "chip8.hpp"
 
 // Maps a keyboard key to a CHIP-8 keypad index or -1 if unmapped.
@@ -43,6 +44,31 @@ bool ParseInt(const char* text, int lo, int hi, int& out) {
     }
 }
 
+// State shred with the audio thread. The main thread sets 'on'; SDL's audio thread reads it. SDL calls the callback from a separate thread, which is why 'on' is atomic.
+struct Beeper {
+    std::atomic<bool> on{false};
+    double phase{0.0};          // position within one wave cycle (0 to 1); only the audio thread uses it 
+};
+
+// SDL calls this whenever the audio device needs more samples. It fills them with a 440 Hz square wave while the beeper is on, and with silence otherwise.
+void AudioCallback(void* userdata, Uint8* stream, int len) {
+    Beeper* beeper = static_cast<Beeper*>(userdata);
+    Sint16* samples = reinterpret_cast<Sint16*>(stream);        // the buffer holds 16-bit samples
+    int count = len / static_cast<int>(sizeof(Sint16));         // len is in bytes, so convert to samples
+    const double step = 440.0 / 44100.0;                        // how far the wave advances per sample
+
+    for (int i = 0; i < count; ++i) {
+        if (beeper->on.load()) {
+            samples[i] = (beeper->phase < 0.5) ? 2000 : -2000;   // high for half the cycle, low for the other half
+            beeper->phase += step;
+            if (beeper->phase >= 1.0) beeper->phase -= 1.0;
+        } else {
+            samples[i] = 0;                                       // silence
+            beeper->phase = 0.0;
+        }
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Require a ROM path so a missing argument gives a message instead of a crash
     if (argc < 2) {
@@ -80,6 +106,26 @@ int main(int argc, char* argv[]) {
     SDL_Texture* texture = SDL_CreateTexture(
         renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING,
         VIDEO_WIDTH, VIDEO_HEIGHT);
+    
+    // Audio is optional: if it can't start, the emulator keeps running without sound
+    Beeper beeper;
+    SDL_AudioDeviceID audioDevice = 0;
+    if (SDL_InitSubSystem(SDL_INIT_AUDIO) == 0) {
+        SDL_AudioSpec want{};
+        want.freq = 44100;            // samples per second
+        want.format = AUDIO_S16SYS;   // signed 16-bit samples
+        want.channels = 1;            // mono
+        want.samples = 512;           // buffer size in samples
+        want.callback = AudioCallback; 
+        want.userdata = &beeper;      // passed to the callback as 'userdata'
+        audioDevice = SDL_OpenAudioDevice(nullptr, 0, &want, nullptr, 0);
+    }
+
+    if (audioDevice != 0) {
+        SDL_PauseAudioDevice(audioDevice, 0);       // 0 = start playing (silence until 'on' is set)
+    }   else {
+        std::cerr << "Audio unavailable, continuing without sound: " << SDL_GetError() << "\n";
+    }
 
     // Run a batch of instructions, tick the timers once, and redraw once every 1/60 s
     const double frameMs = 1000.0 / 60.0;
@@ -129,17 +175,20 @@ int main(int argc, char* argv[]) {
             redraw = true;
         }
 
+        // The buzzer shounds while the sound timer is above zero
+        beeper.on = (chip8.soundTimer > 0);
+
+        // Only update when a frame has run
         if (redraw) {
+            // Apply release only after a frame has run, so every press is seen at least once
             for (int i = 0; i < 16; ++i) {
                 if (releasePending[i]) {
                     chip8.keypad[i] = 0;
                     releasePending[i] = false;
                 }
             }
-        }
-
-        // Only draw when something may have changed
-        if (redraw) {
+            
+            // Draw the latest video buffer
             SDL_UpdateTexture(texture, nullptr, chip8.video, VIDEO_WIDTH * sizeof(uint32_t));
             SDL_RenderClear(renderer);
             SDL_RenderCopy(renderer, texture, nullptr, nullptr);
@@ -150,6 +199,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Clean up in reverse order of creation
+    if (audioDevice != 0) SDL_CloseAudioDevice(audioDevice);
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
