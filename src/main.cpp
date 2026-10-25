@@ -1,5 +1,6 @@
 #include <SDL.h>
 #include <iostream>
+#include <string>
 #include "chip8.hpp"
 
 // Maps a keyboard key to a CHIP-8 keypad index or -1 f unmapped.
@@ -58,13 +59,15 @@ int main(int argc, char* argv[]) {
         VIDEO_WIDTH, VIDEO_HEIGHT);
 
     // Run a batch of instructions, tick the timers once, and redraw once every 1/60 s
-    const int cyclesPerFrame = 12;      // ~720 instructions per second
+    int cyclesPerFrame = 12;                                // default: ~720 instructions per second
+    if (argc >= 3) cyclesPerFrame = std::stoi(argv[2]);     // optional override: chip8 <ROM> <cycles per frame>
     const double frameMs = 1000.0 / 60.0;
     const double ticksPerMs = SDL_GetPerformanceFrequency() / 1000.0;
     Uint64 lastCounter = SDL_GetPerformanceCounter();
     double accumulator = 0.0;           // Time not yet used on frames
 
     bool running = true;
+    bool releasePending[16]{};          // keys released but not yet shown to the ROM
     SDL_Event event;
     while (running) {
         // Closing the window ends the loop, quit key, and keypad presses and releases
@@ -74,12 +77,19 @@ int main(int argc, char* argv[]) {
             }
             else if (event.type == SDL_KEYDOWN) {
                 if (event.key.keysym.sym == SDLK_ESCAPE) running = false;
+                if (event.key.keysym.sym == SDLK_F1) {
+                    chip8.displayWait = !chip8.displayWait;
+                    std::cout << "Display wait: " << (chip8.displayWait ? "on" : "off") << "\n";
+                }
                 int key = MapKey(event.key.keysym.sym);
-                if (key != -1) chip8.keypad[key] = 1;
+                if (key != -1) {
+                    chip8.keypad[key] = 1;
+                    releasePending[key] = false;        // a new press cancels a pending release
+                }
             }
             else if (event.type == SDL_KEYUP) {
                 int key = MapKey(event.key.keysym.sym);
-                if (key != -1) chip8.keypad[key] = 0;
+                if (key != -1) releasePending[key] = true;  // don't clear yet
             }
         }
 
@@ -96,6 +106,15 @@ int main(int argc, char* argv[]) {
             for (int i = 0; i < cyclesPerFrame; ++i) chip8.Cycle();
             chip8.UpdateTimers();
             redraw = true;
+        }
+
+        if (redraw) {
+            for (int i = 0; i < 16; ++i) {
+                if (releasePending[i]) {
+                    chip8.keypad[i] = 0;
+                    releasePending[i] = false;
+                }
+            }
         }
 
         // Only draw when something may have changed

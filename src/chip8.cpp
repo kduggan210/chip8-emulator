@@ -60,6 +60,10 @@ void Chip8::LoadROM(const char* filename) {
 }
 
 void Chip8::Cycle() {
+    // Only the first instruction after a 60 Hz tick may draw (original display-wait behavior)
+    vblankNow = vblankPending;
+    vblankPending = false;
+
     // Fetch: shift byte at pc 8 bits and OR in byte at pc+1 providing the full 2 byte instruction 
     opcode = (memory[pc] << 8) | memory[pc+1];
     // Advance to next instruction before executing this one
@@ -134,7 +138,7 @@ void Chip8::Cycle() {
 void Chip8::UpdateTimers() {
     if (delayTimer > 0) --delayTimer;
     if (soundTimer >0)  --soundTimer;
-    vblankReady = true;
+    vblankPending = true;
 }
 
 
@@ -316,11 +320,10 @@ void Chip8::OP_Cxkk() {
 // Each byte = one row of 8 pixels. Pixels are XORed onto the screen and VF is set to 1 if a collision occurs (a lit pixel gets turned off)
 void Chip8::OP_Dxyn() {
     // If this frame's draw is already used, undo the pc advance so this same instruction retries on the next cycle
-    if (!vblankReady) {
-        pc -= 2;
-        return;
+    if (displayWait && !vblankNow) {
+    pc -= 2;
+    return;
     }
-    vblankReady = false;
 
     uint8_t Vx = (opcode & 0x0F00) >> 8;
     uint8_t Vy = (opcode & 0x00F0) >> 4;
@@ -374,21 +377,31 @@ void Chip8::OP_Fx07() {
     registers[Vx] = delayTimer;
 }
 
-// Wait for a key press and store it in Vx. If no key is down move pc back 2 to re-run the same instructin next cycle. Rest of the emulator keeps running.
+// Wait for a key press and release, then store the key in Vx. While waiting move pc back 2 so this same isntruction repeats each cycle. The rest of the emulator keeps running.
 void Chip8::OP_Fx0A() {
     uint8_t Vx = (opcode & 0x0F00) >> 8;
 
-    bool pressed = false;
-    for (uint8_t i = 0; i < 16; ++i) {
-        if (keypad[i]) {
-            registers[Vx] = i;
-            pressed = true;
-            break;
+    if (!waitingForRelease) {
+        // Phase 1: wait for any key to go down
+        for (uint8_t i = 0; i < 16; ++i) {
+            if (keypad[i]) {
+                waitKey = i;
+                waitingForRelease = true;
+                break;
+            }
         }
+        pc -= 2;            // repeat this instruction next cycle
     }
 
-    if (!pressed) {
-        pc -= 2;    // undo the advance from Cycle() so this instruction repeats
+    else if (keypad[waitKey]) {
+        // Phase 2: the key is still held down, so keep waiting
+        pc -= 2;
+    }
+
+    else {
+        // Phase 3: the key was released, so store it and move on
+        registers[Vx] = waitKey;
+        waitingForRelease = false;
     }
 }
 

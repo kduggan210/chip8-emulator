@@ -62,5 +62,9 @@ public:
 
     std::mt19937 randGen{std::random_device{}()};            // Random number generator, seeded from the OS
     std::uniform_int_distribution<int> randByte{0, 255};     // Picks a whole number from 0 to 255 evenly
-    bool vblankReady{true};                                  // True once per 60 Hz frame;
+    bool vblankPending{false};                               // Set by UpdateTimers() at each 60 Hz tick
+    bool vblankNow{false};                                   // True only for the first instruction executed after a tick
+    bool waitingForRelease{false};                           // Fx0A: a key has been pressed and we are waiting for it to be released
+    uint8_t waitKey{0};                                      // Fx0A: which key we are waiting on
+    bool displayWait{true};                                  // true = original behavior (one draw per frame); toggle at runtime
 };
