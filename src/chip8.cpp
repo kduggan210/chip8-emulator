@@ -257,7 +257,7 @@ void Chip8::OP_8xy4() {
 void Chip8::OP_8xy5() {
     uint8_t Vx = (opcode & 0x0F00) >> 8;
     uint8_t Vy = (opcode & 0x00F0) >> 4;
-    uint8_t flag = (registers[Vx] > registers[Vy]) ? 1 : 0;
+    uint8_t flag = (registers[Vx] >= registers[Vy]) ? 1 : 0;
     registers[Vx] -= registers[Vy];
     registers[0xF] = flag;
 }
@@ -275,7 +275,7 @@ void Chip8::OP_8xy6() {
 void Chip8::OP_8xy7() {
     uint8_t Vx = (opcode & 0x0F00) >> 8;
     uint8_t Vy = (opcode & 0x00F0) >> 4;
-    uint8_t flag = (registers[Vy] > registers[Vx]) ? 1 : 0;
+    uint8_t flag = (registers[Vy] >= registers[Vx]) ? 1 : 0;
     registers[Vx] = registers[Vy] - registers[Vx];
     registers[0xF] = flag;
 }
