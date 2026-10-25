@@ -3,7 +3,7 @@
 #include <string>
 #include "chip8.hpp"
 
-// Maps a keyboard key to a CHIP-8 keypad index or -1 f unmapped.
+// Maps a keyboard key to a CHIP-8 keypad index or -1 if unmapped.
 // CHIP-8:  1 2 3 C        Keyboard:  1 2 3 4
 //          4 5 6 D                   Q W E R
 //          7 8 9 E                   A S D F
@@ -30,10 +30,34 @@ int MapKey(SDL_Keycode key) {
     }
 }
 
+// Parse a whole-number argument that must fall in [lo, hi]. Returns false if it doesn't.
+bool ParseInt(const char* text, int lo, int hi, int& out) {
+    try {
+        std::size_t used = 0;
+        int value = std::stoi(text, &used);
+        if (used != std::string(text).size() || value < lo || value > hi) return false;
+        out = value;
+        return true;
+    } catch (...) {             // stoi throws on non-numeric or out-of-range text
+        return false;
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Require a ROM path so a missing argument gives a message instead of a crash
     if (argc < 2) {
-        std::cerr << "Usage: chip8 <ROM file>\n";
+    std::cerr << "Usage: chip8 <ROM file> [cycles per frame] [scale]\n";
+    return 1;
+    }
+
+    int cyclesPerFrame = 12;    // default: about 720 instructions per second
+    int scale = 10;             // default: 640x320 window
+    if (argc >= 3 && !ParseInt(argv[2], 1, 10000, cyclesPerFrame)) {
+        std::cerr << "Cycles per frame must be a whole number from 1 to 10000\n";
+        return 1;
+    }
+    if (argc >= 4 && !ParseInt(argv[3], 1, 40, scale)) {
+        std::cerr << "Scale must be a whole number from 1 to 40\n";
         return 1;
     }
 
@@ -46,8 +70,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Each CHIP-8 pixel becomes a scale x scale block so the window is 640x320
-    const int scale = 10;
+    // Each CHIP-8 pixel becomes a scale x scale block. 640x320 is the default scale.
     SDL_Window* window = SDL_CreateWindow(
         "CHIP-8 Emulator", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         VIDEO_WIDTH * scale, VIDEO_HEIGHT * scale, SDL_WINDOW_SHOWN);
@@ -59,8 +82,6 @@ int main(int argc, char* argv[]) {
         VIDEO_WIDTH, VIDEO_HEIGHT);
 
     // Run a batch of instructions, tick the timers once, and redraw once every 1/60 s
-    int cyclesPerFrame = 12;                                // default: ~720 instructions per second
-    if (argc >= 3) cyclesPerFrame = std::stoi(argv[2]);     // optional override: chip8 <ROM> <cycles per frame>
     const double frameMs = 1000.0 / 60.0;
     const double ticksPerMs = SDL_GetPerformanceFrequency() / 1000.0;
     Uint64 lastCounter = SDL_GetPerformanceCounter();

@@ -38,28 +38,51 @@ Chip8::Chip8() {
     }
 }
 
-void Chip8::LoadROM(const char* filename) {
-    // Open file in binary mode. "ate" starts the read cursor at the end to learn the file's size
+bool Chip8::LoadROM(const char* filename) {
     std::ifstream file(filename, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
         std::cerr << "Could not open ROM: " << filename << "\n";
-        return; 
+        return false;
     }
 
-    // Refuse ROMs that do not fit from 0x200 to 0xFFF memory space
     std::streamsize size = file.tellg();
+    if (size <= 0) {
+        std::cerr << "ROM is empty or unreadable: " << filename << "\n";
+        return false;
+    }
     if (size > static_cast<std::streamsize>(sizeof(memory) - START_ADDRESS)) {
         std::cerr << "ROM is too large.\n";
-        return;
+        return false;
     }
 
-    // Move cursor back to start of the file
     file.seekg(0, std::ios::beg);
-    // Read file into memory array converting uint8_t* into char* to match read() expectation
-    file.read(reinterpret_cast<char*>(&memory[START_ADDRESS]), size);
+    if (!file.read(reinterpret_cast<char*>(&memory[START_ADDRESS]), size)) {
+        std::cerr << "Failed to read ROM: " << filename << "\n";
+        return false;
+    }
+    return true;
+}
+
+// Print what went wrong and stop executing. The window stays open so the last screen is visible.
+void Chip8::Fault(const char* message) {
+    std::cerr << "CHIP-8 fault: " << message << " (pc=0x" << std::hex << pc << std::dec << ")\n";
+    halted = true;
+}
+
+// True if memory[start] through memory[start + count - 1] all exist
+bool Chip8::InMemory(unsigned int start, unsigned int count) const {
+    return start + count <= sizeof(memory);
 }
 
 void Chip8::Cycle() {
+    if (halted) return;     // after a fault, stop executing but keep the window alive
+
+    // The fetch reads memory[pc] and memory[pc + 1], so pc can be at most 0xFFE
+    if (pc > sizeof(memory) - 2) {
+        Fault("program counter ran past the end of memory");
+        return;
+    }
+
     // Only the first instruction after a 60 Hz tick may draw (original display-wait behavior)
     vblankNow = vblankPending;
     vblankPending = false;
@@ -152,6 +175,7 @@ void Chip8::OP_00E0() {
 
 // Return from a subroutine: pop the saved address off the stack into pc
 void Chip8::OP_00EE() {
+    if (sp == 0) { Fault("return with an empty stack"); return; }
     --sp;
     pc = stack[sp];
 }
@@ -164,6 +188,7 @@ void Chip8::OP_1nnn() {
 
 // Save the return address on the stack, then jump. PC was already advanced by 2 in Cycle(), so it points at the instruction after the call
 void Chip8::OP_2nnn() {
+    if (sp >= 16) { Fault("stack overflow (more than 16 nested calls)"); return; }
     uint16_t address = opcode & 0x0FFF;
     stack[sp] = pc;     // push the return address
     ++sp;               // move the stack pointer up to the next free slot
@@ -329,6 +354,9 @@ void Chip8::OP_Dxyn() {
     uint8_t Vy = (opcode & 0x00F0) >> 4;
     uint8_t height = opcode & 0x000F;
 
+    // Bounds check: the sprite reads 'height' bytes starting at index
+    if (!InMemory(index, height)) { Fault("sprite data runs past the end of memory"); return; }
+
     // The starting position wraps around the screen
     uint8_t xPos = registers[Vx] % VIDEO_WIDTH;
     uint8_t yPos = registers[Vy] % VIDEO_HEIGHT;
@@ -433,6 +461,10 @@ void Chip8::OP_Fx29() {
 // Store the decimal digits of Vx in memory at I (hundreds), I+1 (tens), I+2 (ones)
 void Chip8::OP_Fx33() {
     uint8_t Vx = (opcode & 0x0F00) >> 8;
+
+    // Bounds check: this writes 3 bytes starting at index
+    if (!InMemory(index, 3)) { Fault("BCD store runs past the end of memory"); return; }
+
     uint8_t value = registers[Vx];
 
     memory[index + 2] = value % 10;     // ones
@@ -445,6 +477,10 @@ void Chip8::OP_Fx33() {
 // Store registers V0 through Vx in memory starting at I
 void Chip8::OP_Fx55() {
     uint8_t Vx = (opcode & 0x0F00) >> 8;
+
+    // Bounds check: this writes Vx + 1 bytes starting at index
+    if (!InMemory(index, Vx + 1)) { Fault("register store runs past the end of memory"); return; }
+
     for (uint8_t i = 0; i <= Vx; ++i) {
         memory[index + i] = registers[i];
     }
@@ -454,6 +490,10 @@ void Chip8::OP_Fx55() {
 // Read registers V0 through Vx from memory starting at I
 void Chip8::OP_Fx65() {
     uint8_t Vx = (opcode & 0x0F00) >> 8;
+
+    // Bounds check: this reads Vx + 1 bytes starting at index
+    if (!InMemory(index, Vx + 1)) { Fault("register load runs past the end of memory"); return; }
+    
     for (uint8_t i = 0; i <= Vx; ++i) {
         registers[i] = memory[index + i];
     }

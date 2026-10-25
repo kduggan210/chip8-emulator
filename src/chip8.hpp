@@ -8,7 +8,9 @@ constexpr unsigned int VIDEO_HEIGHT = 32;
 class Chip8 {
 public:
     Chip8();                                        // Sets up the machine's starting state
-    void LoadROM(const char* filename);             // Copies ROM file into memory
+    bool LoadROM(const char* filename);             // Copies ROM file into memory; false on failure
+    void Fault(const char* message);                // Report a fatal emulation error and stop executing
+    bool InMemory(unsigned int start, unsigned int count) const;  // True if count bytes from start fit in memory
     void Cycle();                                   // Runs one fetch, decode, execute step
     void UpdateTimers();                            // Ticks both timers down by 1
 
@@ -60,11 +62,12 @@ public:
     uint32_t video[VIDEO_WIDTH * VIDEO_HEIGHT]{};   // One on or off value per pixel
     uint16_t opcode{};                              // Current instruction being executed
 
-    std::mt19937 randGen{std::random_device{}()};            // Random number generator, seeded from the OS
-    std::uniform_int_distribution<int> randByte{0, 255};     // Picks a whole number from 0 to 255 evenly
-    bool vblankPending{false};                               // Set by UpdateTimers() at each 60 Hz tick
-    bool vblankNow{false};                                   // True only for the first instruction executed after a tick
-    bool waitingForRelease{false};                           // Fx0A: a key has been pressed and we are waiting for it to be released
-    uint8_t waitKey{0};                                      // Fx0A: which key we are waiting on
-    bool displayWait{true};                                  // true = original behavior (one draw per frame); toggle at runtime
+    std::mt19937 randGen{std::random_device{}()};           // Random number generator, seeded from the OS
+    std::uniform_int_distribution<int> randByte{0, 255};    // Picks a whole number from 0 to 255 evenly
+    bool vblankPending{false};                              // Set by UpdateTimers() at each 60 Hz tick
+    bool vblankNow{false};                                  // True only for the first instruction executed after a tick
+    bool waitingForRelease{false};                          // Fx0A: a key has been pressed and we are waiting for it to be released
+    uint8_t waitKey{0};                                     // Fx0A: which key we are waiting on
+    bool displayWait{true};                                 // true = original behavior (one draw per frame); toggle at runtime
+    bool halted{false};                                     // Set by Fault(); Cycle() does nothing once true
 };
