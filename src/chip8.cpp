@@ -175,7 +175,9 @@ void Chip8::OP_00E0() {
 
 // Return from a subroutine: pop the saved address off the stack into pc
 void Chip8::OP_00EE() {
-    if (sp == 0) { Fault("return with an empty stack"); return; }
+    if (sp == 0) { 
+        Fault("return with an empty stack"); return; 
+    }
     --sp;
     pc = stack[sp];
 }
@@ -188,7 +190,10 @@ void Chip8::OP_1nnn() {
 
 // Save the return address on the stack, then jump. PC was already advanced by 2 in Cycle(), so it points at the instruction after the call
 void Chip8::OP_2nnn() {
-    if (sp >= 16) { Fault("stack overflow (more than 16 nested calls)"); return; }
+    if (sp >= 16) { 
+        Fault("stack overflow (more than 16 nested calls)"); return; 
+    }
+    
     uint16_t address = opcode & 0x0FFF;
     stack[sp] = pc;     // push the return address
     ++sp;               // move the stack pointer up to the next free slot
