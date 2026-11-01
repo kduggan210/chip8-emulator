@@ -89,23 +89,45 @@ int main(int argc, char* argv[]) {
 
     // Create the machine and load the ROM into memory at 0x200
     Chip8 chip8;               
-    chip8.LoadROM(argv[1]);
+    if (!chip8.LoadROM(argv[1])) return 1;
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         std::cerr << "SDL_Init failed: " << SDL_GetError() << "\n";
         return 1;
     }
 
-    // Each CHIP-8 pixel becomes a scale x scale block. 640x320 is the default scale.
+    // Each CHIP-8 pixel becomes a scale x scale block. 640x320 at the default scale of 10.
     SDL_Window* window = SDL_CreateWindow(
         "CHIP-8 Emulator", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         VIDEO_WIDTH * scale, VIDEO_HEIGHT * scale, SDL_WINDOW_SHOWN);
+
+    if (!window) {
+        std::cerr << "Could not create window: " << SDL_GetError() << "\n";
+        SDL_Quit();
+        return 1;
+    }
+
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+
+    if (!renderer) {
+        std::cerr << "Could not create renderer: " << SDL_GetError() << "\n";
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
 
     // Image held by the renderer. 64x32 (one entry per CHIP-8 pixel). "Streaming" means contents are overwritten every frame
     SDL_Texture* texture = SDL_CreateTexture(
         renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING,
         VIDEO_WIDTH, VIDEO_HEIGHT);
+
+    if (!texture) {
+        std::cerr << "Could not create texture: " << SDL_GetError() << "\n";
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
     
     // Audio is optional: if it can't start, the emulator keeps running without sound
     Beeper beeper;
