@@ -42,6 +42,8 @@
 build/
 Build/
 build-*/
+dist/
+*.zip
 
 # CMake generated files
 CMakeFiles/
